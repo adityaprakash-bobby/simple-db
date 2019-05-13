@@ -81,7 +81,7 @@ typedef struct Statement_t Statement;
 struct Table_t {
 
     uint32_t num_rows;
-    void* pages[TABLE_MAX_PAGES]
+    void* pages[TABLE_MAX_PAGES];
 
 };
 
@@ -131,6 +131,11 @@ void deserialize_row(void* source, Row* destination) {
     memcpy(&(destination->email), source + EMAIL_OFFSET, EMAIL_SIZE);    
 
 }
+
+// Function to print a row of the table
+void print_row(Row* row) {
+    printf("( %d, %s, %s )\n", row->id, row->username, row->email);
+} 
 
 // Memory page for reading and writing
 void* row_slot(Table* table, uint32_t row_num) {
