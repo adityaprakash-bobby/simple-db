@@ -1,3 +1,7 @@
+/*
+    Basic REPL structure for the DB
+*/
+
 # include "db.h"
 
 int main (int argc, char *argv[]) {
@@ -31,8 +35,16 @@ int main (int argc, char *argv[]) {
             case (PREPARE_SUCCESS):
                 break;
 
+            case (PREPARE_NEGATIVE_ID):
+                printf("ID cannot be negative.\n");
+                continue;
+
             case (PREPARE_SYNTAX_ERROR):
-                printf("Syntax error. Coul not parse statement.\n");
+                printf("Syntax error. Could not parse statement.\n");
+                continue;
+            
+            case (PREPARE_STRING_TOO_LONG):
+                printf("String is too long.\n");
                 continue;
 
             case (PREPARE_UNRECOGNIZED_STATEMENT):
