@@ -1,9 +1,17 @@
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include "db.h"
+
 /*
     Basic REPL structure for the DB
 */
-
-# include "db.h"
-
 int main (int argc, char *argv[]) {
 
     if (argc < 2) {

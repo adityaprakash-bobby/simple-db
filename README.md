@@ -9,10 +9,10 @@ An in-memory database created in C.
 gcc main.c -o db
 
 # run the executable
-./db \<db-filename\>
+./db <db-filename>
 
 # check the memory pattern in the db file
-vim \<db-filename\>
+vim <db-filename>
 :%!xxd
 ```
 
