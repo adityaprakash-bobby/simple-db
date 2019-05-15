@@ -89,6 +89,17 @@ struct Table_t {
 
 typedef struct Table_t Table;
 
+// Cursor structure to point to a location in the table
+struct Cursor_t {
+
+    Table* table;
+    uint32_t row_num;
+    bool end_of_table;
+
+};
+
+typedef struct Cursor_t Cursor;
+
 // A small wrapper to interract with getline()
 InputBuffer* new_input_buffer() {
     
@@ -139,6 +150,34 @@ void print_row(Row* row) {
     printf("( %d, %s, %s )\n", row->id, row->username, row->email);
 } 
 
+/* Cursor functions are peroformed by the following two funtions 
+    - Create a cursor at the beginning of the table
+    - Create a cursor at the end of the table
+    - Access the elements of the row pointed by the cursor
+    - Advance the cursor to the next row
+*/
+Cursor* table_start(Table* table) {
+
+    Cursor* cursor = malloc(sizeof(Cursor));
+    cursor->table = table;
+    cursor->row_num = 0;
+    cursor->end_of_table = (table->num_rows == 0);
+
+    return cursor;
+
+}
+
+Cursor* table_end(Table* table) {
+
+    Cursor* cursor = malloc(sizeof(Cursor);
+    cursor->table = table;
+    cursor->row_num = table->num_rows;
+    cursor->end_of_table = true;
+
+    return cursor;
+    
+}
+
 // Get a page and handle a cache miss
 void* get_page(Pager* pager, uint32_t page_num) {
 
@@ -175,15 +214,27 @@ void* get_page(Pager* pager, uint32_t page_num) {
 
 }
 
-// Memory page for reading and writing
-void* row_slot(Table* table, uint32_t row_num) {
+// Function for pointing the position described by the cursor
+void* cursor_value(Cursor* cursor) {
 
+    uint32_t row_num = cursor->row_num;
     uint32_t page_num = row_num / ROWS_PER_PAGE;
-    void* page = get_page(table->pager, page_num);
+    
+    void* page = get_page(cursor->table->pager, page_num);
 
     uint32_t row_offset = row_num % ROWS_PER_PAGE;
     uint32_t byte_offset = row_offset * ROW_SIZE;
     return page + byte_offset;
+
+}
+
+// Function to advance the cursor to the next row in the table
+void cursor_advance(Cursor* cursor) {
+
+    cursor->row_num += 1;
+    if (cursor->row_num >= cursor->table->num_rows) {
+        cursor->end_of_table = true;
+    }
 
 }
 
@@ -383,10 +434,13 @@ ExecuteResult execute_insert(Statement* statement, Table* table) {
         return EXECUTE_TABLE_FULL;
     }
 
+    Cursor* cursor = table_end(table);
     Row* row_to_insert = &(statement->row_to_insert);
 
-    serialize_row(row_to_insert, row_slot(table, table->num_rows));
+    serialize_row(row_to_insert, cursor_value(cursor));
     table->num_rows += 1;
+
+    free(cursor);
 
     return EXECUTE_SUCCESS;
 
@@ -395,12 +449,17 @@ ExecuteResult execute_insert(Statement* statement, Table* table) {
 ExecuteResult execute_select(Statement* statement, Table* table) {
 
     Row row;
-    for (uint32_t i = 0; i < table->num_rows; i++) {
+    Cursor* cursor = table_start(table);
+   
+    while (!cursor->end_of_table) {
 
-        deserialize_row(row_slot(table, i), &row);
+        deserialize_row(cursor_value(cursor), &row);
         print_row(&row);
+        cursor_advance(cursor);
 
     }
+
+    free(cursor);
 
     return EXECUTE_SUCCESS;
 
