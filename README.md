@@ -9,12 +9,17 @@ An in-memory database created in C.
 gcc main.c -o db
 
 # run the executable
-./db
+./db \<db-filename\>
+
+# check the memory pattern in the db file
+vim \<db-filename\>
+:%!xxd
 ```
 
 #### Features worked on till now:
 
- - Basic REPL design
- - Execute insert and select operations
- - A dummy table for users
- - In-memory append-only database structure
+ - Basic REPL design.
+ - Execute insert and select operations.
+ - A single hard-coded users table.
+ - In-memory append-only database structure.
+ - Adding persistence to the database file created by user.
