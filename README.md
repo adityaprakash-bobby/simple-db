@@ -1,4 +1,4 @@
-# simple-db [WIP]
+# simple-db
 
 A Sqlite-like database written in pure C. 
 
