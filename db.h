@@ -176,6 +176,29 @@ const uint32_t LEAF_NODE_SPACE_FOR_CELLS =
 const uint32_t LEAF_NODE_MAX_CELLS = 
                 LEAF_NODE_SPACE_FOR_CELLS / LEAF_NODE_CELL_SIZE;
 
+/*
+    Accessing Leaf Nodes
+*/
+uint32_t* leaf_node_num_cells(void* node) {
+    return node + LEAF_NODE_NUM_CELLS_OFFSET;
+}
+
+void* lead_node_cell(void* node, uint32_t cell_num) {
+    return node + LEAF_NODE_HEADER_SIZE + cell_num * LEAF_NODE_CELL_SIZE;
+}
+
+uint32_t* leaf_node_key(void* node, uint32_t cell_num) {
+    return leaf_node_cell(node, cell_num);
+}
+
+void* leaf_node_value(void* node, uint32_t cel_num) {
+    return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
+}
+
+void initialize_leaf_node(void* node) {
+    *leaf_node_num_cells(node) = 0;
+}
+
 // Function to serialize the row data 
 void serialize_row(Row* source, void* destination) {
 
