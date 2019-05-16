@@ -23,3 +23,5 @@ vim <db-filename>
  - A single hard-coded users table.
  - In-memory append-only database structure.
  - Adding persistence to the database file created by user.
+ - B+Tree structure for indexing the database.
+ - DB now consists of a single leaf B Tree structure with size of 4096 bytes (can hold 13 key-value pairs, after which it throws `Table Full` error)

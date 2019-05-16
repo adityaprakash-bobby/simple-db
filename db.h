@@ -1,50 +1,10 @@
+#include "enumerators.h"
+
 #define COLUMN_USERNAME_SIZE 32
 #define COLUMN_EMAIL_SIZE 255
 #define TABLE_MAX_PAGES 100
 
 #define size_of_attribute(Struct, Attribute) sizeof(((Struct*)0)->Attribute)
-
-/*
-    Enumerators to handle various status codes related to the different
-    funtions and implementations
-*/
-enum MetaCommandResult_t {
-    META_COMMAND_SUCCESS,
-    META_COMMAND_UNRECOGNIZED_COMMAND
-};
-
-typedef enum MetaCommandResult_t MetaCommandResult;
-
-enum PrepareResult_t {
-    PREPARE_SUCCESS,
-    PREPARE_NEGATIVE_ID,
-    PREPARE_SYNTAX_ERROR,
-    PREPARE_STRING_TOO_LONG,
-    PREPARE_UNRECOGNIZED_STATEMENT
-};
-
-typedef enum PrepareResult_t PrepareResult;
-
-enum StatementType_t {
-    STATEMENT_INSERT,
-    STATEMENT_SELECT
-};
-
-typedef enum StatementType_t StatementType;
-
-enum ExecuteResult_t {
-    EXECUTE_SUCCESS,
-    EXECUTE_TABLE_FULL
-};
-
-typedef enum ExecuteResult_t ExecuteResult;
-
-enum NodeType_t {
-    NODE_INTERNAL,
-    NODE_LEAF
-};
-
-typedef enum NodeType_t NodeType;
 
 /*
     Structures to deal with various implementations
@@ -183,7 +143,7 @@ uint32_t* leaf_node_num_cells(void* node) {
     return node + LEAF_NODE_NUM_CELLS_OFFSET;
 }
 
-void* lead_node_cell(void* node, uint32_t cell_num) {
+void* leaf_node_cell(void* node, uint32_t cell_num) {
     return node + LEAF_NODE_HEADER_SIZE + cell_num * LEAF_NODE_CELL_SIZE;
 }
 
@@ -262,6 +222,38 @@ void* get_page(Pager* pager, uint32_t page_num) {
 
 }
 
+// Function for inserting a key-value pair into a leaf node
+void leaf_node_insert(Cursor* cursor, uint32_t key, Row* value) {
+
+    void* node = get_page(cursor->table->pager,cursor->page_num);
+
+    uint32_t num_cells = *leaf_node_num_cells(node);
+    if (num_cells >= LEAF_NODE_MAX_CELLS) {
+
+        // Node is full
+        printf("Need to implement splitting a leaf node.\n");
+        exit(EXIT_FAILURE);
+
+    }
+
+    if (cursor->cell_num < num_cells) {
+
+        // Make room for new cell
+        for (uint32_t i = num_cells; i > cursor->cell_num; i--) {
+            
+            memcpy(leaf_node_cell(node, i), leaf_node_cell(node, i - 1), 
+                    LEAF_NODE_CELL_SIZE);
+        
+        }
+
+    }
+
+    *(leaf_node_num_cells(node)) += 1;
+    *(leaf_node_key(node, cursor->cell_num)) = key;
+    serialize_row(value, leaf_node_value(node, cursor->cell_num));
+
+}
+
 /* Cursor functions are peroformed by the following two funtions 
     - Create a cursor at the beginning of the table
     - Create a cursor at the end of the table
@@ -326,6 +318,33 @@ void cursor_advance(Cursor* cursor) {
 // Print a prompt for the user
 void print_prompt() {
     printf("db>");
+}
+
+// Function to print out the necessary constants
+void print_constants() {
+
+    printf("ROW_SIZE: %d\n", ROW_SIZE);
+    printf("COMMON_NODE_HEADER_SIZE: %d\n", COMMON_NODE_HEADER_SIZE);
+    printf("LEAF_NODE_HEADER_SIZE: %d\n", LEAF_NODE_HEADER_SIZE);
+    printf("LEAF_NODE_CELL_SIZE: %d\n", LEAF_NODE_CELL_SIZE);
+    printf("LEAF_NODE_SPACE_FOR_CELLS: %d\n", LEAF_NODE_SPACE_FOR_CELLS);
+    printf("LEAF_NODE_MAX_CELLS: %d\n", LEAF_NODE_MAX_CELLS);
+
+}
+
+// Function to visualize the btree representation
+void print_leaf_node(void* node) {
+
+    uint32_t num_cells = *leaf_node_num_cells(node);
+    printf("leaf (size %d)\n", num_cells);
+
+    for (uint32_t i = 0; i < num_cells; i++) {
+
+        uint32_t key = *leaf_node_key(node, i);
+        printf("  - %d  :  %d\n", i, key);
+
+    }
+
 }
 
 // Read input from STDIN
@@ -434,7 +453,19 @@ MetaCommandResult do_meta_command(InputBuffer* input_buffer, Table* table) {
     if (strcmp(input_buffer->buffer, ".exit") == 0) {
         db_close(table);
         exit(EXIT_SUCCESS);
-    }   
+    }
+
+    else if (strcmp(input_buffer->buffer, ".btree") == 0) {
+        printf("Tree:\n");
+        print_leaf_node(get_page(table->pager, 0));
+        return META_COMMAND_SUCCESS;
+    }
+
+    else if (strcmp(input_buffer->buffer, ".constants") == 0) {
+        printf("Constants:\n");
+        print_constants();
+        return META_COMMAND_SUCCESS;
+    }
 
     else {
         return META_COMMAND_UNRECOGNIZED_COMMAND;
@@ -498,15 +529,16 @@ PrepareResult prepare_statement(InputBuffer* input_buffer,
 
 ExecuteResult execute_insert(Statement* statement, Table* table) {
 
-    if (table->num_rows >= TABLE_MAX_ROWS) {
+    void* node = get_page(table->pager, table->root_page_num);
+    
+    if (*leaf_node_num_cells(node) >= LEAF_NODE_MAX_CELLS) {
         return EXECUTE_TABLE_FULL;
     }
 
     Cursor* cursor = table_end(table);
     Row* row_to_insert = &(statement->row_to_insert);
 
-    serialize_row(row_to_insert, cursor_value(cursor));
-    table->num_rows += 1;
+    leaf_node_insert(cursor, row_to_insert->id, row_to_insert);
 
     free(cursor);
 
@@ -579,11 +611,16 @@ Pager* pager_open(const char* filename) {
 Table* db_open(const char* filename) {
 
     Pager* pager = pager_open(filename);
-    uint32_t num_rows = pager->file_length / ROW_SIZE;
     
     Table* table = malloc(sizeof(Table));
     table->pager = pager;
-    table->num_rows = num_rows;
+    table->root_page_num = 0;
+
+    if (pager->num_pages == 0) {
+        // New db file. Initialize page 0 as the leaf node
+        void* root_node = get_page(pager, 0);
+        initialize_leaf_node(root_node);
+    }
 
     return table;
 
