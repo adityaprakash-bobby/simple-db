@@ -84,6 +84,7 @@ struct Pager_t {
 
     int file_descriptor;
     uint32_t file_length;
+    uint32_t num_pages;
     void* pages[TABLE_MAX_PAGES];
 
 };
@@ -93,7 +94,7 @@ typedef struct Pager_t Pager;
 // Structure to keep track of the pages of the rows
 struct Table_t {
 
-    uint32_t num_rows;
+    uint32_t root_page_num;
     Pager* pager;
 };
 
@@ -103,7 +104,8 @@ typedef struct Table_t Table;
 struct Cursor_t {
 
     Table* table;
-    uint32_t row_num;
+    uint32_t page_num;
+    uint32_t cell_num;
     bool end_of_table;
 
 };
@@ -138,8 +140,6 @@ const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
     Keeping track of the number of rows
 */
 const uint32_t PAGE_SIZE = 4096;
-const uint32_t ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
-const uint32_t TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
 
 /*
     Common Node Header Layout
@@ -191,7 +191,7 @@ uint32_t* leaf_node_key(void* node, uint32_t cell_num) {
     return leaf_node_cell(node, cell_num);
 }
 
-void* leaf_node_value(void* node, uint32_t cel_num) {
+void* leaf_node_value(void* node, uint32_t cell_num) {
     return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
 }
 
@@ -222,34 +222,6 @@ void print_row(Row* row) {
     printf("( %d, %s, %s )\n", row->id, row->username, row->email);
 } 
 
-/* Cursor functions are peroformed by the following two funtions 
-    - Create a cursor at the beginning of the table
-    - Create a cursor at the end of the table
-    - Access the elements of the row pointed by the cursor
-    - Advance the cursor to the next row
-*/
-Cursor* table_start(Table* table) {
-
-    Cursor* cursor = malloc(sizeof(Cursor));
-    cursor->table = table;
-    cursor->row_num = 0;
-    cursor->end_of_table = (table->num_rows == 0);
-
-    return cursor;
-
-}
-
-Cursor* table_end(Table* table) {
-
-    Cursor* cursor = malloc(sizeof(Cursor);
-    cursor->table = table;
-    cursor->row_num = table->num_rows;
-    cursor->end_of_table = true;
-
-    return cursor;
-    
-}
-
 // Get a page and handle a cache miss
 void* get_page(Pager* pager, uint32_t page_num) {
 
@@ -279,6 +251,10 @@ void* get_page(Pager* pager, uint32_t page_num) {
         }
 
         pager->pages[page_num] = page;
+
+        if (page_num >= pager->num_pages) {
+            pager->num_pages = page_num + 1;
+        }
     
     }
 
@@ -286,25 +262,62 @@ void* get_page(Pager* pager, uint32_t page_num) {
 
 }
 
+/* Cursor functions are peroformed by the following two funtions 
+    - Create a cursor at the beginning of the table
+    - Create a cursor at the end of the table
+    - Access the elements of the row pointed by the cursor
+    - Advance the cursor to the next row
+*/
+Cursor* table_start(Table* table) {
+
+    Cursor* cursor = malloc(sizeof(Cursor));
+    cursor->table = table;
+    cursor->page_num = table->root_page_num;
+    cursor->cell_num = 0;
+
+    void* root_node = get_page(table->pager, table->root_page_num);
+    uint32_t num_cells = *leaf_node_num_cells(root_node);
+    cursor->end_of_table = (num_cells == 0);
+
+    return cursor;
+
+}
+
+Cursor* table_end(Table* table) {
+
+    Cursor* cursor = malloc(sizeof(Cursor));
+    cursor->table = table;
+    cursor->page_num = table->root_page_num;
+
+    void* root_node = get_page(table->pager, table->root_page_num);
+    uint32_t num_cells = *leaf_node_num_cells(root_node);
+    cursor->cell_num = num_cells;
+    cursor->end_of_table = true;
+
+    return cursor;
+    
+}
+
 // Function for pointing the position described by the cursor
 void* cursor_value(Cursor* cursor) {
 
-    uint32_t row_num = cursor->row_num;
-    uint32_t page_num = row_num / ROWS_PER_PAGE;
+    uint32_t page_num = cursor->page_num;
     
     void* page = get_page(cursor->table->pager, page_num);
 
-    uint32_t row_offset = row_num % ROWS_PER_PAGE;
-    uint32_t byte_offset = row_offset * ROW_SIZE;
-    return page + byte_offset;
+    return leaf_node_value(page, cursor->cell_num);
 
 }
 
 // Function to advance the cursor to the next row in the table
 void cursor_advance(Cursor* cursor) {
 
-    cursor->row_num += 1;
-    if (cursor->row_num >= cursor->table->num_rows) {
+    uint32_t page_num = cursor->page_num;
+    void* node = get_page(cursor->table->pager, page_num);
+    
+    cursor->cell_num += 1;
+    
+    if (cursor->cell_num >= *leaf_node_num_cells(node)) {
         cursor->end_of_table = true;
     }
 
@@ -341,7 +354,8 @@ void close_input_buffer(InputBuffer* input_buffer) {
 }
 
 // Function to flush the data at the end of the db file
-void* pager_flush(Pager* pager, uint32_t page_num, uint32_t size) {
+// Takes up the complete page, even it's not full
+void* pager_flush(Pager* pager, uint32_t page_num) {
 
     if (pager->pages[page_num] == NULL) {
 
@@ -360,7 +374,7 @@ void* pager_flush(Pager* pager, uint32_t page_num, uint32_t size) {
     }
 
     ssize_t bytes_written = 
-        write(pager->file_descriptor, pager->pages[page_num], size);
+        write(pager->file_descriptor, pager->pages[page_num], PAGE_SIZE);
     
     if (bytes_written == -1) {
 
@@ -376,34 +390,16 @@ void* pager_flush(Pager* pager, uint32_t page_num, uint32_t size) {
 void db_close(Table* table) {
     
     Pager* pager = table->pager;
-    uint32_t num_full_pages = table->num_rows / ROWS_PER_PAGE;
 
-    for (uint32_t i = 0; i < num_full_pages; i++) {
+    for (uint32_t i = 0; i < pager->num_pages; i++) {
 
         if (pager->pages[i] == NULL) {
             continue;
         }
 
-        pager_flush(pager, i, PAGE_SIZE);
+        pager_flush(pager, i);
         free(pager->pages[i]);
         pager->pages[i] = NULL;
-
-    }
-    
-    // There may be a partial page to write to the end of this file
-    // This would not be needed after we switch to a B-Tree
-    uint32_t num_additional_rows = table->num_rows % ROWS_PER_PAGE;
-    if (num_additional_rows > 0) {
-
-        uint32_t page_num = num_full_pages;
-
-        if (pager->pages[page_num] != NULL) {
-
-            pager_flush(pager, page_num, num_additional_rows * ROW_SIZE);
-            free(pager->pages[page_num]);
-            pager->pages[page_num] = NULL;
-
-        }
 
     }
 
@@ -564,6 +560,12 @@ Pager* pager_open(const char* filename) {
     Pager* pager = malloc(sizeof(Pager));
     pager->file_descriptor = fd;
     pager->file_length = file_length;
+    pager->num_pages = (file_length / PAGE_SIZE);
+
+    if (file_length % PAGE_SIZE != 0) {
+        printf("Db file is not a whole number of pages. Corrupt file.\n");
+        exit(EXIT_FAILURE);
+    }
 
     for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++) {
 
