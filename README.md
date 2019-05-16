@@ -1,6 +1,6 @@
 # simple-db [WIP]
 
-An in-memory database created in C. 
+A Sqlite-like database written in pure C. 
 
 #### Execute the program
 
