@@ -275,19 +275,70 @@ Cursor* table_start(Table* table) {
 
 }
 
-Cursor* table_end(Table* table) {
+/*
+    Function to binary search for a key in the leaf 
+    node since internal node has not been implemented 
+    yet
+*/
+Cursor* leaf_node_find(Table* table, uint32_t page_num, uint32_t key) {
+
+    void* node = get_page(table->pager, page_num);
+    uint32_t num_cells = *leaf_node_num_cells(node);
 
     Cursor* cursor = malloc(sizeof(Cursor));
     cursor->table = table;
-    cursor->page_num = table->root_page_num;
+    cursor->page_num = page_num;
 
-    void* root_node = get_page(table->pager, table->root_page_num);
-    uint32_t num_cells = *leaf_node_num_cells(root_node);
-    cursor->cell_num = num_cells;
-    cursor->end_of_table = true;
+    // Binary search
+    uint32_t min_index = 0;
+    uint32_t one_past_max_index = num_cells;
 
+    while (min_index != one_past_max_index) {
+
+        uint32_t mid_index = (min_index + one_past_max_index) / 2;
+        uint32_t key_at_mid_index = *leaf_node_key(node, mid_index);
+
+        if (key == key_at_mid_index) {
+            
+            cursor->cell_num = mid_index;
+            return cursor;
+        
+        }
+
+        if (key < key_at_mid_index) {
+            one_past_max_index = mid_index;
+        } 
+
+        else {
+            min_index = mid_index + 1;
+        }
+
+    }
+
+    cursor->cell_num = min_index;
     return cursor;
-    
+
+}
+
+/*
+    Return the position of the given key
+    If the key is not present, return the position
+    where it should be inserted
+*/
+Cursor* table_find(Table* table, uint32_t key) {
+
+    uint32_t root_page_num = table->root_page_num;
+    void* root_node = get_page(table->pager, root_page_num);
+
+    if (get_node_type(root_node) == NODE_LEAF) {
+        return leaf_node_find(table, root_page_num, key);
+    }
+
+    else {
+        printf("Need to implement searching an internal node.\n");
+        exit(EXIT_FAILURE);
+    }
+
 }
 
 // Function for pointing the position described by the cursor
@@ -530,13 +581,24 @@ PrepareResult prepare_statement(InputBuffer* input_buffer,
 ExecuteResult execute_insert(Statement* statement, Table* table) {
 
     void* node = get_page(table->pager, table->root_page_num);
+    uint32_t num_cells = (*leaf_node_num_cells(node));
     
-    if (*leaf_node_num_cells(node) >= LEAF_NODE_MAX_CELLS) {
+    if (num_cells >= LEAF_NODE_MAX_CELLS) {
         return EXECUTE_TABLE_FULL;
     }
 
-    Cursor* cursor = table_end(table);
     Row* row_to_insert = &(statement->row_to_insert);
+    uint32_t key_to_insert = row_to_insert->id;
+    Cursor* cursor = table_find(table, key_to_insert);
+
+    if (cursor->cell_num < num_cells) {
+        
+        uint32_t key_at_index = *leaf_node_key(node, cursor->cell_num);
+        if (key_at_index == key_to_insert) {
+            return EXECUTE_DUPLICATE_KEY;
+        }
+    
+    }
 
     leaf_node_insert(cursor, row_to_insert->id, row_to_insert);
 
