@@ -28,6 +28,7 @@ typedef enum StatementType_t StatementType;
 
 enum ExecuteResult_t {
     EXECUTE_SUCCESS,
+    EXECUTE_DUPLICATE_KEY,
     EXECUTE_TABLE_FULL
 };
 
