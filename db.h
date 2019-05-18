@@ -135,7 +135,7 @@ const uint32_t LEAF_NODE_SPACE_FOR_CELLS =
                 PAGE_SIZE - LEAF_NODE_HEADER_SIZE;
 const uint32_t LEAF_NODE_MAX_CELLS = 
                 LEAF_NODE_SPACE_FOR_CELLS / LEAF_NODE_CELL_SIZE;
-const uint32_t LEAF_NODE_RIGHT_SPLIT_COUNT = (LEAF_NODE_MAX_CELLS + 1) / 2;
+const uint32_t LEAF_NODE_LEFT_SPLIT_COUNT = (LEAF_NODE_MAX_CELLS + 1) / 2;
 const uint32_t LEAF_NODE_RIGHT_SPLIT_COUNT = (LEAF_NODE_MAX_CELLS + 1) - LEAF_NODE_RIGHT_SPLIT_COUNT;
 /* 
     Function to get the NODE type
@@ -306,7 +306,7 @@ void leaf_node_split_and_insert(Cursor* cursor, uint32_t key, Row* value) {
     */
 
     *(leaf_node_num_cells(old_node)) = LEAF_NODE_LEFT_SPLIT_COUNT;
-    *(leaf_node_num_cells(new_node)) = LEAF_NODE_ROGHT_SPLIT_COUNT;
+    *(leaf_node_num_cells(new_node)) = LEAF_NODE_RIGHT_SPLIT_COUNT;
 
     if (is_node_root(old_node)) {
         return create_new_root(cursor->table, new_page_num);
