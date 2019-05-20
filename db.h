@@ -254,6 +254,32 @@ uint32_t get_unused_page_num(Pager* pager) {
     return pager->num_pages;
 }
 
+// Function to allocate new page to store the left child
+void create_new_root(Table* table, uint32_t right_child_page_num) {
+
+    /*
+        Handle splitting the root.
+        Copying the old root to the left child (to new page).
+        Address of right child passed in.
+        Re-initialize root page to contain the new root node.
+        New root node points to the two childs.
+    */
+
+    void* root = get_page(table->pager, table->root_page_num);
+    void* right_child = get_page(table->pager, right_child_page_num);
+    uint32_t left_child_page_num = get_unused_page_num(table->pager);
+    void* left_child = get_page(table->pager, left_child_page_num);
+
+    // Left child has data copied from the old root
+    memcpy(left_child, root, PAGE_SIZE);
+    set_node_root(left_child, false);
+
+    // Set the root as new internal node with two children
+    initialize_internal_node(root);
+    /* ADD FURTHER LOGIC HERE */
+
+}
+
 // Function for inserying a key-value pair into a leaf node
 // in case of a full node
 void leaf_node_split_and_insert(Cursor* cursor, uint32_t key, Row* value) {
