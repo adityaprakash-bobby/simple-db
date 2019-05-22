@@ -136,7 +136,8 @@ const uint32_t LEAF_NODE_SPACE_FOR_CELLS =
 const uint32_t LEAF_NODE_MAX_CELLS = 
                 LEAF_NODE_SPACE_FOR_CELLS / LEAF_NODE_CELL_SIZE;
 const uint32_t LEAF_NODE_LEFT_SPLIT_COUNT = (LEAF_NODE_MAX_CELLS + 1) / 2;
-const uint32_t LEAF_NODE_RIGHT_SPLIT_COUNT = (LEAF_NODE_MAX_CELLS + 1) - LEAF_NODE_RIGHT_SPLIT_COUNT;
+const uint32_t LEAF_NODE_RIGHT_SPLIT_COUNT = 
+                (LEAF_NODE_MAX_CELLS + 1) - LEAF_NODE_LEFT_SPLIT_COUNT;
 
 /*
     Internal Node Header Layout
@@ -386,7 +387,7 @@ void create_new_root(Table* table, uint32_t right_child_page_num) {
     set_node_root(root, true);
     *internal_node_num_keys(root) = 1;
     *internal_node_child(root, 0) = left_child_page_num;
-    uint32_t left_child_max_key = get_node_max_key(left_child);
+    uint32_t left_child_max_key = get_max_node_key(left_child);
     *internal_node_key(root, 0) = left_child_max_key;
     *internal_node_right_child(root) = right_child_page_num;
  
@@ -805,7 +806,7 @@ MetaCommandResult do_meta_command(InputBuffer* input_buffer, Table* table) {
 
     else if (strcmp(input_buffer->buffer, ".btree") == 0) {
         printf("Tree:\n");
-        print_leaf_node(get_page(table->pager, 0));
+        print_tree(table->pager, 0, 0);
         return META_COMMAND_SUCCESS;
     }
 
@@ -978,6 +979,7 @@ Table* db_open(const char* filename) {
         // New db file. Initialize page 0 as the leaf node
         void* root_node = get_page(pager, 0);
         initialize_leaf_node(root_node);
+        set_node_root(root_node, true);
     }
 
     return table;
