@@ -178,6 +178,64 @@ void set_node_type(void* node, NodeType type) {
 
 }
 
+bool is_node_root(void* node) {
+    
+    uint8_t value = *((uint8_t*)(node + IS_ROOT_OFFSET));
+    return (bool)value;
+
+}
+
+void set_node_root(void* node, bool is_root) {
+
+    uint8_t value = is_root;
+    *((uint8_t*)(node + IS_ROOT_OFFSET)) = value;
+
+}
+
+/*
+    Methods for reading and writing into Internal Nodes
+*/
+uint32_t* internal_node_num_keys(void* node) {
+    return node + INTERNAL_NODE_NUM_KEYS_OFFSET;
+}
+
+uint32_t* internal_node_right_child(void* node) {
+    return node + INTERNAL_NODE_RIGHT_CHILD_OFFSET;
+}
+
+uint32_t internal_node_cell(void* node, uint32_t cell_num) {
+    return node + INTERNAL_NODE_HEADER_SIZE + cell_num * INTERNAL_NODE_CELL_SIZE;
+}
+
+uint32_t* internal_node_child(void* node, uint32_t child_num) {
+
+    uint32_t num_keys = *internal_node_num_keys(node);
+
+    if (child_num > num_keys) {
+        printf("Tried to acces child_num %d > num_keys %d.\n", child_num, num_keys);
+        exit(EXIT_FAILURE);
+    }
+    else if (child_num == num_keys) {
+        return internal_node_right_child(node);
+    }
+    else {
+        return internal_node_cell(node, child_num);
+    }
+
+}
+
+uint32_t* internal_node_key(void* node, uint32_t key_num) {
+    return internal_node_cell(node, key_num) + INTERNAL_NODE_CHILD_SIZE;
+}
+
+void initialize_internal_node(void* node) {
+
+    set_node_type(node, NODE_INTERNAL);
+    set_node_root(node, false);
+    *internal_node_num_keys(node) = 0;
+
+}
+
 /*
     Accessing Leaf Nodes
 */
@@ -199,10 +257,30 @@ void* leaf_node_value(void* node, uint32_t cell_num) {
 
 void initialize_leaf_node(void* node) {
     set_node_type(node, NODE_LEAF);
+    set_node_root(node, false);
     *leaf_node_num_cells(node) = 0;
 }
 
-// Function to serialize the row data 
+/*
+    Function to get the maximum node key value in LEAF as well
+    INTERNAL nodes
+*/
+void* get_max_node_key(void* node) {
+
+    switch(get_node_type(node)) {
+
+        case NODE_INTERNAL:
+            return internal_node_key(node, *internal_node_num_keys(node) -1);
+        case NODE_LEAF:
+            return leaf_node_key(node, *leaf_node_num_cells(node) - 1);
+
+    }
+
+}
+
+/*
+    Function to serialize the row data 
+*/
 void serialize_row(Row* source, void* destination) {
 
     memcpy(destination + ID_OFFSET, &(source->id), ID_SIZE);
@@ -211,7 +289,9 @@ void serialize_row(Row* source, void* destination) {
 
 }
 
-// Function to deserialize the row data from memory
+/*
+    Function to deserialize the row data from memory
+*/
 void deserialize_row(void* source, Row* destination) {
 
     memcpy(&(destination->id), source + ID_OFFSET, ID_SIZE);
@@ -220,12 +300,16 @@ void deserialize_row(void* source, Row* destination) {
 
 }
 
-// Function to print a row of the table
+/*
+    Function to print a row of the table
+*/
 void print_row(Row* row) {
     printf("( %d, %s, %s )\n", row->id, row->username, row->email);
 } 
 
-// Get a page and handle a cache miss
+/*
+Get a page and handle a cache miss
+*/
 void* get_page(Pager* pager, uint32_t page_num) {
 
     if (page_num > TABLE_MAX_PAGES) {
@@ -275,7 +359,9 @@ uint32_t get_unused_page_num(Pager* pager) {
     return pager->num_pages;
 }
 
-// Function to allocate new page to store the left child
+/*
+    Function to allocate new page to store the left child
+*/
 void create_new_root(Table* table, uint32_t right_child_page_num) {
 
     /*
@@ -306,8 +392,10 @@ void create_new_root(Table* table, uint32_t right_child_page_num) {
  
 }
 
-// Function for inserying a key-value pair into a leaf node
-// in case of a full node
+/*
+    Function for inserying a key-value pair into a leaf node
+    in case of a full node
+*/
 void leaf_node_split_and_insert(Cursor* cursor, uint32_t key, Row* value) {
 
     /*
@@ -372,7 +460,9 @@ void leaf_node_split_and_insert(Cursor* cursor, uint32_t key, Row* value) {
 
 }
 
-// Function for inserting a key-value pair into a leaf node
+/*
+    Function for inserting a key-value pair into a leaf node
+*/
 void leaf_node_insert(Cursor* cursor, uint32_t key, Row* value) {
 
     void* node = get_page(cursor->table->pager,cursor->page_num);
@@ -491,7 +581,9 @@ Cursor* table_find(Table* table, uint32_t key) {
 
 }
 
-// Function for pointing the position described by the cursor
+/* 
+    Function for pointing the position described by the cursor
+*/
 void* cursor_value(Cursor* cursor) {
 
     uint32_t page_num = cursor->page_num;
@@ -502,7 +594,9 @@ void* cursor_value(Cursor* cursor) {
 
 }
 
-// Function to advance the cursor to the next row in the table
+/*
+    Function to advance the cursor to the next row in the table
+*/
 void cursor_advance(Cursor* cursor) {
 
     uint32_t page_num = cursor->page_num;
@@ -516,12 +610,16 @@ void cursor_advance(Cursor* cursor) {
 
 }
 
-// Print a prompt for the user
+/*
+    Print a prompt for the user
+*/
 void print_prompt() {
     printf("db>");
 }
 
-// Function to print out the necessary constants
+/*
+    Function to print out the necessary constants
+*/
 void print_constants() {
 
     printf("ROW_SIZE: %d\n", ROW_SIZE);
@@ -533,22 +631,63 @@ void print_constants() {
 
 }
 
-// Function to visualize the btree representation
-void print_leaf_node(void* node) {
+/*
+    Functions to visualize the btree representation
+*/
+void indent(uint32_t level) {
 
-    uint32_t num_cells = *leaf_node_num_cells(node);
-    printf("leaf (size %d)\n", num_cells);
-
-    for (uint32_t i = 0; i < num_cells; i++) {
-
-        uint32_t key = *leaf_node_key(node, i);
-        printf("  - %d  :  %d\n", i, key);
-
+    for (uint32_t i = 0; i < level; i++) {
+        printf("   ");
     }
 
 }
 
-// Read input from STDIN
+void print_tree(Pager* pager, uint32_t page_num, uint32_t indentation_level) {
+
+    void* node = get_page(pager, page_num);
+    uint32_t num_keys, child;
+
+    switch (get_node_type(node))
+    {
+        case NODE_INTERNAL:
+           
+            num_keys = *internal_node_num_keys(node);
+            indent(indentation_level);
+            printf("- internal (size %d)\n", num_keys);
+
+            for (uint32_t i = 0; i < num_keys; i++) {
+
+                child = *internal_node_child(node, i);
+                print_tree(pager, child, indentation_level + 1);
+
+                indent(indentation_level + 1);
+                printf("- key %d\n", *internal_node_key(node, i));
+
+            }
+
+            break;
+        
+        case NODE_LEAF:
+
+            num_keys = *leaf_node_num_cells(node);
+            indent(indentation_level);
+            printf("- leaf node (size %d)\n", num_keys);
+
+            for (uint32_t i = 0; i < num_keys; i++) {
+
+                indent(indentation_level + 1);
+                printf("- key %d\n", *leaf_node_key(node, i));
+
+            }
+
+            break;
+    }
+
+}
+
+/*
+    Read input from STDIN
+*/
 void read_input(InputBuffer* input_buffer) {
 
     ssize_t bytes_read = getline(&(input_buffer->buffer), 
@@ -565,7 +704,9 @@ void read_input(InputBuffer* input_buffer) {
     input_buffer->buffer[bytes_read - 1] = 0;
 }
 
-// Function to free allocated memory for the instance of InputBuffer
+/* 
+    Function to free allocated memory for the instance of InputBuffer
+*/
 void close_input_buffer(InputBuffer* input_buffer) {
 
     free(input_buffer->buffer);
@@ -573,8 +714,10 @@ void close_input_buffer(InputBuffer* input_buffer) {
 
 }
 
-// Function to flush the data at the end of the db file
-// Takes up the complete page, even it's not full
+/*
+    Function to flush the data at the end of the db file
+    Takes up the complete page, even it's not full
+*/
 void* pager_flush(Pager* pager, uint32_t page_num) {
 
     if (pager->pages[page_num] == NULL) {
@@ -605,8 +748,10 @@ void* pager_flush(Pager* pager, uint32_t page_num) {
 
 }
 
-// Flush page cache to disk, close the file, free memory for
-// the pager and Table data structures
+/*
+    Flush page cache to disk, close the file, free memory for
+    the pager and Table data structures
+*/
 void db_close(Table* table) {
     
     Pager* pager = table->pager;
@@ -647,8 +792,10 @@ void db_close(Table* table) {
     free(table);
 }
 
-// Wrapper that handles non-SQL commands like '.exit' and leaves room for more 
-// such commands
+/*
+    Wrapper that handles non-SQL commands like '.exit' and leaves room for more 
+    such commands
+*/
 MetaCommandResult do_meta_command(InputBuffer* input_buffer, Table* table) {
 
     if (strcmp(input_buffer->buffer, ".exit") == 0) {
@@ -675,9 +822,12 @@ MetaCommandResult do_meta_command(InputBuffer* input_buffer, Table* table) {
 }
 
 /* 
-    The SQL compiler
+    SQL compiler
 */
-// Function to handle the compiliing of the insert statements
+
+/*
+Function to handle the compiliing of the insert statements
+*/
 PrepareResult prepare_insert(InputBuffer* input_buffer, Statement* statement) {
 
     statement->type = STATEMENT_INSERT;
